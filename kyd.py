@@ -109,13 +109,13 @@ class DumbRedirectHandler(urllib2.HTTPRedirectHandler):
         )
         result.status = code
         return result
+
     def http_error_302(self, req, fp, code, msg, headers):
         result = urllib2.HTTPRedirectHandler.http_error_302(
             self, req, fp, code, msg, headers
         )
         result.status = code
         return result
-
 
 
 def check_url_http(domain):
@@ -188,7 +188,8 @@ if __name__ == '__main__':
     parser.add_option(
         '-f', '--file',
         default='./domains.txt',
-        help='the file name containing the list of the domain names (default=%default)',
+        help='the file name containing the list of the domain names'
+        ' (default=%default)',
         action='store',
         dest='input',
         type='string'
