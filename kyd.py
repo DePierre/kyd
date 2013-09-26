@@ -46,15 +46,36 @@ def csv_save(data, filename='./result.txt'):
     """
         Save the result into a file following the CSV format.
         Data looks like:
-            {'domain': {'ip': ip, 'url': url}}
+            {
+                'domain': {
+                    'ip_addresse': ip_addresses,
+                    'aliases': aliases,
+                    'web': {
+                        'url': url,
+                        'status': status
+                    }
+                }
+            }
+
         Each line looks like:
-            domain name; ip adresses; url
+            domain name; ip adresses; aliases; url; status
     """
 
-    with open(filename, 'rb') as output:
+    with open(filename, 'wb') as output:
         csv_writer = csv.writer(output, delimiter=';', quotechar='"')
-        for domain, information in data.items():
-            output.writerow([domain, information['ip'], information['url']])
+        for domain, info in data.iteritems():
+            row = [domain]
+            row.append(
+                ';'.join([ip for ip in info['ip_addresses'] if ip])
+            )
+            if info['aliases']:
+                row.extend([
+                    alias for alias in info['aliases'] if alias
+                ])
+            else:
+                row.append('')
+            row.extend([info['web']['url'], info['web']['status']])
+            csv_writer.writerow(row)
 
 
 def csv_read(filename='./domains.txt'):
@@ -102,11 +123,8 @@ def check_url_http(domain):
         Check URL to find if wether or not there is a Web Server.
         Only support HTTP protocol.
 
-        Return one of the following case:
-            {url: {'url': final_url, 'status': status}}
-            [domain, url_of_the_webserver]
-            [url, 'NO WEB SERVER']
-            [url, 'REDIRECTION URL TIME OUT']
+        Return:
+            {'url': final_url, 'status': status}
     """
 
     url = domain
@@ -187,9 +205,11 @@ if __name__ == '__main__':
     (opt, args) = parser.parse_args()
 
     start = time.time()
+    result = {}
     domains = csv_read(opt.input)
     for domain in domains:
-        print check_domain(domain)
+        result.update(check_domain(domain))
+    csv_save(result)
     elapsed = time.time() - start
 
     print '(elapsed time: %.2f seconds)' % elapsed
