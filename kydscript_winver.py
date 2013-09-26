@@ -3,8 +3,8 @@
 #
 # KYDScript (KYD stands for "Know Your Domains")
 #
-# Code by CPE / CERT Societe Generale 
-# 
+# Code by CPE / CERT Societe Generale
+#
 # Greetings to GAR for some Python debugging help ;-)
 #
 # Microsoft Windows compatible version by JPT
@@ -58,70 +58,70 @@ def checkURL(url,file):
 					print  >>file,"REDIRECTION URL TIME OUT" # redirection ok mais domaine final time out
 				else:
 					finalurl=f.url[7:] # on vire le http:// en prenant la chaine a partir du 7eme char, pas tres class mais bon...
-					print >>file,finalurl		
+					print >>file,finalurl
 			else:
 				print >>file,myhttpurl[7:]+";"
 			return status
 		except Exception, e:
 			print "Exeption " + str(e) + " on " + str(url)
-	return 0	
+	return 0
+
+if __name__ == '__main__':
+    # Credits... :-p
+    print 'KYDScript (Know Your Domains Script) v1.1 by CPE / CERT Societe Generale'
+
+    # Test nombre d'arguments
+    if len(sys.argv)!=3 :
+        print "Usage : ",sys.argv[0],"inputfilename outputfilename"
+        sys.exit()
+
+    # Ouverture fichier d'input
+    try:
+        myinputfile=open(sys.argv[1], "r")
+    except IOError:
+        print "No such file :",sys.argv[1]
+        sys.exit()
+
+    # Ouverture fichier d'output
+    try:
+        myoutputfile=open(sys.argv[2],"w")
+    except IOError:
+        print "Cannot write file :",sys.argv[2]
+        sys.exit()
+
+    socket.setdefaulttimeout(20)
+    none='None'
+
+    for mydomain in myinputfile:
+
+        mydomain=mydomain.strip()
+        whoisdata=""
+        print "Processing "+mydomain
+        print >>myoutputfile,mydomain+";",
+
+        try:
+            mydata=socket.gethostbyname_ex(mydomain)
+
+        except socket.gaierror, err:
+            try:
+                whoisdata = subprocess.check_output(["c:\SysinternalsSuite\whois", "%s" %mydomain])
+            except subprocess.CalledProcessError as e:
+                whoisdata = e.output
+            # For *nix: whoisstatus, whoisdata = commands.getstatusoutput("whois %s" %mydomain)
+            print whoisdata
+            bla=re.search('Registrar:',whoisdata)
+            bla=str(bla)
+            if bla=="None":
+                print >>myoutputfile,'; ;DOMAIN DOES NOT EXIST'
+            else:
+                print >>myoutputfile,"; ;NO WEB SERVER FOR DOMAIN"
+        else:
+            ipslist=mydata[2]
+            print >>myoutputfile,','.join(ipslist)+";",
+            checkURL(mydomain,myoutputfile)
+
+        time.sleep(2)
 
 
-# Credits... :-p
-print 'KYDScript (Know Your Domains Script) v1.1 by CPE / CERT Societe Generale'
-
-# Test nombre d'arguments
-if len(sys.argv)!=3 :
-	print "Usage : ",sys.argv[0],"inputfilename outputfilename"
-	sys.exit()
-
-# Ouverture fichier d'input
-try:
-	myinputfile=open(sys.argv[1], "r")
-except IOError:
-	print "No such file :",sys.argv[1]
-	sys.exit()
-
-# Ouverture fichier d'output
-try:
-	myoutputfile=open(sys.argv[2],"w")
-except IOError:
-	print "Cannot write file :",sys.argv[2]
-	sys.exit()
-
-socket.setdefaulttimeout(20)
-none='None'
-
-for mydomain in myinputfile:
-	
-	mydomain=mydomain.strip()
-	whoisdata=""
-	print "Processing "+mydomain
-	print >>myoutputfile,mydomain+";",
-
-	try:
-		mydata=socket.gethostbyname_ex(mydomain)
-	
-	except socket.gaierror, err:
-		try:
-			whoisdata = subprocess.check_output(["c:\SysinternalsSuite\whois", "%s" %mydomain])	
-		except subprocess.CalledProcessError as e:
-			whoisdata = e.output
-		# For *nix: whoisstatus, whoisdata = commands.getstatusoutput("whois %s" %mydomain)
-		print whoisdata
-		bla=re.search('Registrar:',whoisdata)
-		bla=str(bla)
-		if bla=="None":
-			print >>myoutputfile,'; ;DOMAIN DOES NOT EXIST'
-		else:
-			print >>myoutputfile,"; ;NO WEB SERVER FOR DOMAIN"
-	else:
-		ipslist=mydata[2]
-		print >>myoutputfile,','.join(ipslist)+";",
-		checkURL(mydomain,myoutputfile)
-		
-	time.sleep(2)
-	
-	
-myinputfile.close()
-myoutputfile.close()
+    myinputfile.close()
+    myoutputfile.close()
