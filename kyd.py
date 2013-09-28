@@ -38,8 +38,16 @@ import csv
 import time
 import socket
 import urllib2
+import logging
+import threading
 from whois import NICClient
 from optparse import OptionParser
+
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(levelname)s] (%(threadName)-10s) %(message)s',
+)
 
 
 def csv_save(data, filename='./result.txt'):
@@ -118,70 +126,84 @@ class DumbRedirectHandler(urllib2.HTTPRedirectHandler):
         return result
 
 
-def check_url_http(domain):
-    """
-        Check URL to find if wether or not there is a Web Server.
-        Only support HTTP protocol.
+class LookupThread(threading.Thread):
+    def __init__(self, domain, result, pool):
+        self.domain = domain
+        self.result = result
+        self.pool = pool
+        threading.Thread.__init__(self)
 
-        Return:
-            {'url': final_url, 'status': status}
-    """
+    def run(self):
+        self.pool.acquire()
+        try:
+            logging.debug('Starting')
+            self.lookup(self.domain)
+        finally:
+            self.pool.release()
+            logging.debug('Exiting')
 
-    url = domain
-    if not url.startswith('http://'):
-        url = 'http://' + url
-    result = {'url': '', 'status': 'NO_WEB_SERVER'}
-
-    try:
-        request = urllib2.Request(url)
-        opener = urllib2.build_opener(DumbRedirectHandler())
-        f = opener.open(request)
-    except urllib2.URLError, e:
-        return result
-    else:
-        if f.status == 301 or f.status == 302:
-            try:
-                urllib2.urlopen(f.url)
-            except urllib2.URLError:
-                result['status'] = 'REDIRECTION_URL_TIME_OUT'
+    def lookup(self, domain):
+        try:
+            domain_name, aliases, ip_addresses = socket.gethostbyname_ex(domain)
+        except socket.gaierror:
+            result[domain] = {
+                'aliases': '',
+                'ip_addresses': '',
+            }
+            whois_data = NICClient().whois(domain, 'whois.crsnic.net', 0x02)
+            if not re.search('registrar:', whois_data, re.IGNORECASE):
+                result[domain]['web'] = {
+                    'url': '',
+                    'status': 'DOMAIN_DOES_NOT_EXIST'
+                }
             else:
-                result['status'] = 'REDIRECTION_URL_OK'
-            finally:
-                result['url'] = f.url
+                result[domain]['web'] = {
+                    'url': '',
+                    'status': 'NO_WEB_SERVER_FOR_DOMAIN'
+                }
         else:
-            result['url'] = url
-            result['status'] = str(f.status)
-    return result
-
-
-def check_domain(domain):
-    result = {}
-    #socket.setdefaulttimeout(2)
-    try:
-        domain_name, aliases, ip_addresses = socket.gethostbyname_ex(domain)
-    except socket.gaierror:
-        result[domain] = {
-            'aliases': '',
-            'ip_addresses': '',
-        }
-        whois_data = NICClient().whois(domain, 'whois.crsnic.net', 0x02)
-        if not re.search('registrar:', whois_data, re.IGNORECASE):
-            result[domain]['web'] = {
-                'url': '',
-                'status': 'DOMAIN_DOES_NOT_EXIST'
+            result[domain] = {
+                'aliases': aliases,
+                'ip_addresses': ip_addresses,
+                'web': self.check_url_http(domain)
             }
+        self.result.update(result)
+
+    def check_url_http(self, domain):
+        """
+            Check URL to find if wether or not there is a Web Server.
+            Only support HTTP protocol.
+
+            Return:
+                {'url': final_url, 'status': status}
+        """
+
+        url = domain
+        if not url.startswith('http://'):
+            url = 'http://' + url
+        result = {'url': '', 'status': 'NO_WEB_SERVER'}
+
+        try:
+            request = urllib2.Request(url)
+            opener = urllib2.build_opener(DumbRedirectHandler())
+            f = opener.open(request)
+        except urllib2.URLError:
+            return result
         else:
-            result[domain]['web'] = {
-                'url': '',
-                'status': 'NO_WEB_SERVER_FOR_DOMAIN'
-            }
-    else:
-        result[domain] = {
-            'aliases': aliases,
-            'ip_addresses': ip_addresses,
-            'web': check_url_http(domain)
-        }
-    return result
+            if f.status == 301 or f.status == 302:
+                try:
+                    urllib2.urlopen(f.url)
+                except urllib2.URLError:
+                    result['status'] = 'REDIRECTION_URL_TIME_OUT'
+                else:
+                    result['status'] = 'REDIRECTION_URL_OK'
+                finally:
+                    result['url'] = f.url
+            else:
+                result['status'] = str(f.status)
+                result['url'] = url
+        return result
+
 
 if __name__ == '__main__':
     parser = OptionParser()
@@ -202,15 +224,39 @@ if __name__ == '__main__':
         dest='output',
         type='string'
     )
+    parser.add_option(
+        '-t', '--thread',
+        default='8',
+        help='number of concurrent threads (default=%default)',
+        action='store',
+        dest='pool',
+        type='int'
+    )
 
     (opt, args) = parser.parse_args()
 
     start = time.time()
     result = {}
     domains = csv_read(opt.input)
-    for domain in domains:
-        result.update(check_domain(domain))
+
+    pool = threading.BoundedSemaphore(opt.pool)
+    #socket.setdefaulttimeout(2)
+    lookup_threads = [LookupThread(domain, result, pool) for domain in domains]
+    for thread in lookup_threads:
+        thread.start()
+
+    main_thread = threading.currentThread()
+    for thread in threading.enumerate():
+        if thread is main_thread:
+            continue
+        logging.debug('Joining %s', thread.getName())
+        thread.join()
+
+    print 'Result:'
+    print result
+
     csv_save(result)
     elapsed = time.time() - start
 
+    print
     print '(elapsed time: %.2f seconds)' % elapsed
