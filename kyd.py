@@ -127,6 +127,10 @@ class DumbRedirectHandler(urllib2.HTTPRedirectHandler):
 
 
 class LookupThread(threading.Thread):
+    """
+        Threaded class for threaded domain lookup.
+    """
+
     def __init__(self, domain, result, pool):
         self.domain = domain
         self.result = result
@@ -134,6 +138,9 @@ class LookupThread(threading.Thread):
         threading.Thread.__init__(self)
 
     def run(self):
+        """
+            Try the domain lookup if it can access the pool
+        """
         self.pool.acquire()
         try:
             logging.debug('Starting')
@@ -143,6 +150,14 @@ class LookupThread(threading.Thread):
             logging.debug('Exiting')
 
     def lookup(self, domain):
+        """
+            Determines if the domain is a valid one by asking to
+            gethostbyname_ex. If it fails, it uses a whois request on the
+            domain name to check wether or not the domain has been reserved.
+            If the gethostname succeeds, it checks if it can find a web server
+            on it.
+        """
+
         try:
             domain_name, aliases, ip_addresses = socket.gethostbyname_ex(
                 domain
@@ -229,7 +244,7 @@ if __name__ == '__main__':
     parser.add_option(
         '-t', '--thread',
         default='8',
-        help='number of concurrent threads (default=%default)',
+        help='the number of concurrent threads (default=%default)',
         action='store',
         dest='pool',
         type='int'
