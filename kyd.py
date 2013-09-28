@@ -144,7 +144,9 @@ class LookupThread(threading.Thread):
 
     def lookup(self, domain):
         try:
-            domain_name, aliases, ip_addresses = socket.gethostbyname_ex(domain)
+            domain_name, aliases, ip_addresses = socket.gethostbyname_ex(
+                domain
+            )
         except socket.gaierror:
             result[domain] = {
                 'aliases': '',
