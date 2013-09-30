@@ -11,6 +11,8 @@
 
     Microsoft Windows compatible version by JPT
 
+    Rework and thread implementation by DePierre
+
     v1.2
 
 
@@ -24,9 +26,9 @@
             if none : "domain does not exist". Else : "no web server for
                 domain"
     4. checks with urlparse.
-        if exception : "no web server" (there could be a "A" record, but no web
-            server)
-        if 301 or 302 : follow and check if timeout
+        if exception :
+            "no web server" (there could be a "A" record, but no web server)
+        if 301, 302, 303 or 307 : follow and check if timeout
     5. outputs the results as a CSV file.
 
 """
@@ -109,7 +111,7 @@ def csv_read(filename='./domains.txt'):
 class DumbRedirectHandler(urllib2.HTTPRedirectHandler):
     """
         Dummy redirect handler which allows to know wether or not a URL leads
-        to a 301 or a 302.
+        to a 301, 302, 303 or 307.
     """
     def http_error_301(self, req, fp, code, msg, headers):
         result = urllib2.HTTPRedirectHandler.http_error_301(
@@ -118,12 +120,9 @@ class DumbRedirectHandler(urllib2.HTTPRedirectHandler):
         result.status = code
         return result
 
-    def http_error_302(self, req, fp, code, msg, headers):
-        result = urllib2.HTTPRedirectHandler.http_error_302(
-            self, req, fp, code, msg, headers
-        )
-        result.status = code
-        return result
+    http_error_302 = http_error_301
+    http_error_303 = http_error_301
+    http_error_307 = http_error_301
 
 
 class LookupThread(threading.Thread):
@@ -207,18 +206,19 @@ class LookupThread(threading.Thread):
         except urllib2.URLError:
             return result
         else:
-            if f.status == 301 or f.status == 302:
+            # The opener only has the status attribute when it is a redirection
+            if hasattr(f, 'status'):
                 try:
                     urllib2.urlopen(f.url)
                 except urllib2.URLError:
                     result['status'] = 'REDIRECTION_URL_TIME_OUT'
                 else:
-                    result['status'] = 'REDIRECTION_URL_OK'
+                    result['status'] = str(f.status)
                 finally:
                     result['url'] = f.url
             else:
-                result['status'] = str(f.status)
-                result['url'] = url
+                result['status'] = str(f.getcode())
+                result['url'] = f.url
         return result
 
 
@@ -272,7 +272,7 @@ if __name__ == '__main__':
     print 'Result:'
     print result
 
-    csv_save(result)
+    csv_save(result, filename=opt.output)
     elapsed = time.time() - start
 
     print
