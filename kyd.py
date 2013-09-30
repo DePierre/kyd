@@ -130,10 +130,11 @@ class LookupThread(threading.Thread):
         Threaded class for threaded domain lookup.
     """
 
-    def __init__(self, domain, result, pool):
+    def __init__(self, domain, result, pool, verbose=False):
         self.domain = domain
         self.result = result
         self.pool = pool
+        self.verbose = verbose
         threading.Thread.__init__(self)
 
     def run(self):
@@ -142,11 +143,13 @@ class LookupThread(threading.Thread):
         """
         self.pool.acquire()
         try:
-            logging.debug('Starting')
+            if self.verbose:
+                logging.debug('Starting')
             self.lookup(self.domain)
         finally:
             self.pool.release()
-            logging.debug('Exiting')
+            if self.verbose:
+                logging.debug('Exiting')
 
     def lookup(self, domain):
         """
@@ -225,6 +228,13 @@ class LookupThread(threading.Thread):
 if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option(
+        '-v', '--verbose',
+        default=False,
+        help='print the debug messages (default=%default)',
+        action='store_true',
+        dest='verbose'
+    )
+    parser.add_option(
         '-f', '--file',
         default='./domains.txt',
         help='the file name containing the list of the domain names'
@@ -242,12 +252,20 @@ if __name__ == '__main__':
         type='string'
     )
     parser.add_option(
-        '-t', '--thread',
+        '-p', '--pool',
         default='8',
         help='the number of concurrent threads (default=%default)',
         action='store',
         dest='pool',
         type='int'
+    )
+    parser.add_option(
+        '-t', '--timeout',
+        default=None,
+        help='the timeout value of the lookup (default=%default)',
+        action='store',
+        dest='timeout',
+        type=int
     )
 
     (opt, args) = parser.parse_args()
@@ -257,8 +275,11 @@ if __name__ == '__main__':
     domains = csv_read(opt.input)
 
     pool = threading.BoundedSemaphore(opt.pool)
-    #socket.setdefaulttimeout(2)
-    lookup_threads = [LookupThread(domain, result, pool) for domain in domains]
+
+    lookup_threads = [
+        LookupThread(domain, result, pool, verbose=opt.verbose)
+        for domain in domains
+    ]
     for thread in lookup_threads:
         thread.start()
 
@@ -266,8 +287,9 @@ if __name__ == '__main__':
     for thread in threading.enumerate():
         if thread is main_thread:
             continue
-        logging.debug('Joining %s', thread.getName())
-        thread.join()
+        if opt.verbose:
+            logging.debug('Joining %s', thread.getName())
+        thread.join(opt.timeout)
 
     print 'Result:'
     print result
