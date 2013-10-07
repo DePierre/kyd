@@ -133,6 +133,7 @@ class LookupThread(threading.Thread):
     def __init__(self, domain, result, pool, verbose=False):
         self.domain = domain
         self.result = result
+        self.info = {domain: None}
         self.pool = pool
         self.verbose = verbose
         threading.Thread.__init__(self)
@@ -146,6 +147,7 @@ class LookupThread(threading.Thread):
             if self.verbose:
                 logging.debug('Starting')
             self.lookup(self.domain)
+            self.result.update(self.info)
         finally:
             self.pool.release()
             if self.verbose:
@@ -165,28 +167,27 @@ class LookupThread(threading.Thread):
                 domain
             )
         except socket.gaierror:
-            result[domain] = {
+            self.info[domain] = {
                 'aliases': '',
                 'ip_addresses': '',
             }
             whois_data = NICClient().whois(domain, 'whois.crsnic.net', 0x02)
             if not re.search('registrar:', whois_data, re.IGNORECASE):
-                result[domain]['web'] = {
+                self.info[domain]['web'] = {
                     'url': '',
                     'status': 'DOMAIN_DOES_NOT_EXIST'
                 }
             else:
-                result[domain]['web'] = {
+                self.info[domain]['web'] = {
                     'url': '',
                     'status': 'NO_WEB_SERVER_FOR_DOMAIN'
                 }
         else:
-            result[domain] = {
+            self.info[domain] = {
                 'aliases': aliases,
                 'ip_addresses': ip_addresses,
                 'web': self.check_url_http(domain)
             }
-        self.result.update(result)
 
     def check_url_http(self, domain):
         """
@@ -200,29 +201,29 @@ class LookupThread(threading.Thread):
         url = domain
         if not url.startswith('http://'):
             url = 'http://' + url
-        result = {'url': '', 'status': 'NO_WEB_SERVER'}
+        info_web = {'url': '', 'status': 'NO_WEB_SERVER'}
 
         try:
             request = urllib2.Request(url)
             opener = urllib2.build_opener(DumbRedirectHandler())
             f = opener.open(request)
         except urllib2.URLError:
-            return result
+            return info_web
         else:
             # The opener only has the status attribute when it is a redirection
             if hasattr(f, 'status'):
                 try:
                     urllib2.urlopen(f.url)
                 except urllib2.URLError:
-                    result['status'] = 'REDIRECTION_URL_TIME_OUT'
+                    info_web['status'] = 'REDIRECTION_URL_TIME_OUT'
                 else:
-                    result['status'] = str(f.status)
+                    info_web['status'] = str(f.status)
                 finally:
-                    result['url'] = f.url
+                    info_web['url'] = f.url
             else:
-                result['status'] = str(f.getcode())
-                result['url'] = f.url
-        return result
+                info_web['status'] = str(f.getcode())
+                info_web['url'] = f.url
+        return info_web
 
 
 if __name__ == '__main__':
